@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const transporter = require("../utils/nodemailerTransporter");
 const User = require("../models/User");
+const sendEmail = require("../utils/sendEmail");
 
 const multer = require("multer");
 const path = require("path");
