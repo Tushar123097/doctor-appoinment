@@ -20,12 +20,19 @@ exports.patientSignup = async (req, res) => {
 
     // If user exists, just send the existing OTP again
     if (user) {
-      await transporter.sendMail({
-        from: `"MyApp Team" <${process.env.EMAIL_USER}>`,
+      // await transporter.sendMail({
+      //   from: `"MyApp Team" <${process.env.EMAIL_USER}>`,
+      //   to: email,
+      //   subject: "Patient Signup OTP",
+      //   text: `Hello ${name},\n\nYour OTP is: ${user.otp}\n\nUse this OTP to login anytime.`,
+      // });
+      // return res.json({ message: "OTP sent again to your email." });
+       sendEmail({
         to: email,
-        subject: "Patient Signup OTP",
+        subject: "Doctor Signup OTP",
         text: `Hello ${name},\n\nYour OTP is: ${user.otp}\n\nUse this OTP to login anytime.`,
       });
+
       return res.json({ message: "OTP sent again to your email." });
     }
 
