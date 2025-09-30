@@ -13,96 +13,45 @@ function generateOTP() {
 }
 
 // -------------------- PATIENT SIGNUP --------------------
-// exports.patientSignup = async (req, res) => {
-//   const { name, email } = req.body;
-
-//   try {
-//     let user = await User.findOne({ email, role: "patient" });
-
-//     // If user exists, just send the existing OTP again
-//     if (user) {
-//       await transporter.sendMail({
-//         from: `"MyApp Team" <${process.env.EMAIL_USER}>`,
-//         to: email,
-//         subject: "Patient Signup OTP",
-//         text: `Hello ${name},\n\nYour OTP is: ${user.otp}\n\nUse this OTP to login anytime.`,
-//       });
-//       return res.json({ message: "OTP sent again to your email." });
-     
-
-//       // return res.json({ message: "OTP sent again to your email." });
-//     }
-
-//     // Generate OTP only if new user
-//     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-//     user = new User({
-//       name,
-//       email,
-//       role: "patient",
-//       otp,              // store permanently
-//       // otpExpires: optional, you can remove or set very long duration
-//     });
-
-//     await user.save();
-
-//     await transporter.sendMail({
-//       from: `"MyApp Team" <${process.env.EMAIL_USER}>`,
-//       to: email,
-//       subject: "Patient Signup OTP",
-//       text: `Hello ${name},\n\nYour OTP is: ${otp}\n\nUse this OTP to login anytime.`,
-//     });
-
-//     res.json({ message: "OTP sent to email. Use this OTP to login anytime." });
-//   } catch (err) {
-//     console.error("Signup error:", err);
-//     res.status(500).json({ error: "Signup failed", details: err.message });
-//   }
-// };
-// const User = require("../models/User");
-// const transporter = require("../utils/nodemailerTransporter");
-
 exports.patientSignup = async (req, res) => {
   const { name, email } = req.body;
 
   try {
     let user = await User.findOne({ email, role: "patient" });
 
-    // Function to safely send email without blocking response
-    const sendOtpEmail = async (otp) => {
-      try {
-        await transporter.sendMail({
-          from: `"MyApp Team" <${process.env.EMAIL_USER}>`,
-          to: email,
-          subject: "Patient Signup OTP",
-          text: `Hello ${name},\n\nYour OTP is: ${otp}\n\nUse this OTP to login anytime.`,
-        });
-        console.log(`OTP email sent to ${email}`);
-      } catch (err) {
-        console.error("Error sending email:", err.message);
-      }
-    };
-
+    // If user exists, just send the existing OTP again
     if (user) {
-      // Send OTP asynchronously (does not block response)
-      sendOtpEmail(user.otp);
+      await transporter.sendMail({
+        from: `"MyApp Team" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: "Patient Signup OTP",
+        text: `Hello ${name},\n\nYour OTP is: ${user.otp}\n\nUse this OTP to login anytime.`,
+      });
       return res.json({ message: "OTP sent again to your email." });
+     
+
+      // return res.json({ message: "OTP sent again to your email." });
     }
 
-    // New user: generate OTP
+    // Generate OTP only if new user
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
     user = new User({
       name,
       email,
       role: "patient",
-      otp,
+      otp,              // store permanently
+      // otpExpires: optional, you can remove or set very long duration
     });
 
     await user.save();
 
-    // Send email asynchronously
-    sendOtpEmail(otp);
+    await transporter.sendMail({
+      from: `"MyApp Team" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Patient Signup OTP",
+      text: `Hello ${name},\n\nYour OTP is: ${otp}\n\nUse this OTP to login anytime.`,
+    });
 
     res.json({ message: "OTP sent to email. Use this OTP to login anytime." });
   } catch (err) {
@@ -211,29 +160,29 @@ exports.doctorVerifyOtp = async (req, res) => {
 exports.updateDoctorProfile = async (req, res) => {
   try {
     const doctorId = req.params.id;
-    const { degree, experience, specialty, availability } = req.body;
+    // Destructure fields from req.body
+    const { degree, experience, specialty, availability , fees } = req.body;
 
     const doctor = await User.findById(doctorId);
     if (!doctor || doctor.role !== "doctor") {
       return res.status(404).json({ error: "Doctor not found" });
     }
 
+    // Update simple fields
     if (degree) doctor.degree = degree;
     if (experience) doctor.experience = experience;
     if (specialty) doctor.specialty = specialty;
+    if (fees) doctor.fees = fees;
 
-    // Handle availability
+    // Update availability
     if (availability) {
-      /*
-        Expect availability as JSON array of objects:
-        [
-          { "day": "Monday", "from": "10:00", "to": "14:00" },
-          { "day": "Tuesday", "from": "10:00", "to": "14:00" }
-        ]
-      */
       let parsedAvailability;
       if (typeof availability === "string") {
-        parsedAvailability = JSON.parse(availability);
+        try {
+          parsedAvailability = JSON.parse(availability);
+        } catch (err) {
+          return res.status(400).json({ error: "Invalid JSON format for availability" });
+        }
       } else {
         parsedAvailability = availability;
       }
@@ -252,6 +201,7 @@ exports.updateDoctorProfile = async (req, res) => {
     res.status(500).json({ error: "Failed to update profile", details: err.message });
   }
 };
+
 
 
 // Get patient profile

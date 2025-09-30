@@ -12,6 +12,7 @@ const userSchema = new mongoose.Schema({
   degree: { type: String },
   experience: { type: String },
   specialty: { type: String },
+  fees: { type: Number }, 
   availability: [
     {
       day: String,

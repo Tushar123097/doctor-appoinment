@@ -31,7 +31,7 @@ exports.bookAppointment = async (req, res) => {
       doctorId,
       date,
       time,
-      fees,
+      // fees,
       status: "waiting", // ✅ default status
       token: Math.floor(100000 + Math.random() * 900000).toString(),
     });

@@ -12,7 +12,7 @@ router.post("/doctor/signup", authController.doctorSignup);
 router.post("/doctor/verify-otp", authController.doctorVerifyOtp);
 
 // Doctor profile update (text only, no photo)
-// router.put("/doctor/profile/:id", authController.updateDoctorProfile);
+//  router.put("/doctor/profile/:id", authController.updateDoctorProfile);
 // router.put("/profile/:id", authController.updateDoctorProfile);
 // router.put("/profile/:id", authController.updateDoctorProfile);
 
