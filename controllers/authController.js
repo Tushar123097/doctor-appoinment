@@ -13,24 +13,72 @@ function generateOTP() {
 }
 
 // -------------------- PATIENT SIGNUP --------------------
+// exports.patientSignup = async (req, res) => {
+//   const { name, email } = req.body;
+
+//   try {
+//     let user = await User.findOne({ email, role: "patient" });
+
+//     // If user exists, just send the existing OTP again
+//     if (user) {
+//       await transporter.sendMail({
+//         from: `"MyApp Team" <${process.env.EMAIL_USER}>`,
+//         to: email,
+//         subject: "Patient Signup OTP",
+//         text: `Hello ${name},\n\nYour OTP is: ${user.otp}\n\nUse this OTP to login anytime.`,
+//       });
+//       return res.json({ message: "OTP sent again to your email." });
+     
+
+//       // return res.json({ message: "OTP sent again to your email." });
+//     }
+
+//     // Generate OTP only if new user
+//     const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+//     user = new User({
+//       name,
+//       email,
+//       role: "patient",
+//       otp,              // store permanently
+//       // otpExpires: optional, you can remove or set very long duration
+//     });
+
+//     await user.save();
+
+//     await transporter.sendMail({
+//       from: `"MyApp Team" <${process.env.EMAIL_USER}>`,
+//       to: email,
+//       subject: "Patient Signup OTP",
+//       text: `Hello ${name},\n\nYour OTP is: ${otp}\n\nUse this OTP to login anytime.`,
+//     });
+
+//     res.json({ message: "OTP sent to email. Use this OTP to login anytime." });
+//   } catch (err) {
+//     console.error("Signup error:", err);
+//     res.status(500).json({ error: "Signup failed", details: err.message });
+//   }
+// };
+
 exports.patientSignup = async (req, res) => {
   const { name, email } = req.body;
 
   try {
     let user = await User.findOne({ email, role: "patient" });
 
-    // If user exists, just send the existing OTP again
-    if (user) {
-      await transporter.sendMail({
+    const sendEmail = (otpToSend) => {
+      transporter.sendMail({
         from: `"MyApp Team" <${process.env.EMAIL_USER}>`,
         to: email,
         subject: "Patient Signup OTP",
-        text: `Hello ${name},\n\nYour OTP is: ${user.otp}\n\nUse this OTP to login anytime.`,
-      });
-      return res.json({ message: "OTP sent again to your email." });
-     
+        text: `Hello ${name},\n\nYour OTP is: ${otpToSend}\n\nUse this OTP to login anytime.`,
+      }).catch(err => console.error("Email sending failed:", err));
+    };
 
-      // return res.json({ message: "OTP sent again to your email." });
+    // If user exists, just send the existing OTP again
+    if (user) {
+      sendEmail(user.otp);  // non-blocking
+      return res.json({ message: "OTP sent again to your email." });
     }
 
     // Generate OTP only if new user
@@ -40,18 +88,12 @@ exports.patientSignup = async (req, res) => {
       name,
       email,
       role: "patient",
-      otp,              // store permanently
-      // otpExpires: optional, you can remove or set very long duration
+      otp, // store OTP
     });
 
     await user.save();
 
-    await transporter.sendMail({
-      from: `"MyApp Team" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: "Patient Signup OTP",
-      text: `Hello ${name},\n\nYour OTP is: ${otp}\n\nUse this OTP to login anytime.`,
-    });
+    sendEmail(otp); // non-blocking
 
     res.json({ message: "OTP sent to email. Use this OTP to login anytime." });
   } catch (err) {
@@ -59,7 +101,6 @@ exports.patientSignup = async (req, res) => {
     res.status(500).json({ error: "Signup failed", details: err.message });
   }
 };
-
 
 // -------------------- PATIENT VERIFY LOGIN --------------------
 exports.patientVerifyOtp = async (req, res) => {
