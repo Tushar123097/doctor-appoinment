@@ -2,7 +2,7 @@ const jwt = require("jsonwebtoken");
 const transporter = require("../utils/nodemailerTransporter");
 const User = require("../models/User");
 // const sendEmail = require("../utils/mailer");
-
+const sendEmail = require("../utils/sendgridEmail"); // adjust path
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
@@ -66,34 +66,21 @@ exports.patientSignup = async (req, res) => {
   try {
     let user = await User.findOne({ email, role: "patient" });
 
-    const sendEmail = (otpToSend) => {
-      transporter.sendMail({
-        from: `"MyApp Team" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: "Patient Signup OTP",
-        text: `Hello ${name},\n\nYour OTP is: ${otpToSend}\n\nUse this OTP to login anytime.`,
-      }).catch(err => console.error("Email sending failed:", err));
-    };
-
-    // If user exists, just send the existing OTP again
-    if (user) {
-      sendEmail(user.otp);  // non-blocking
-      return res.json({ message: "OTP sent again to your email." });
-    }
-
-    // Generate OTP only if new user
+    // Generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    user = new User({
-      name,
-      email,
-      role: "patient",
-      otp, // store OTP
-    });
+    if (!user) {
+      // Create new user
+      user = new User({ name, email, role: "patient", otp });
+      await user.save();
+    } else {
+      // Update OTP for existing user
+      user.otp = otp;
+      await user.save();
+    }
 
-    await user.save();
-
-    sendEmail(otp); // non-blocking
+    // Send OTP via SendGrid (non-blocking)
+    sendEmail(email, name, otp);
 
     res.json({ message: "OTP sent to email. Use this OTP to login anytime." });
   } catch (err) {
@@ -101,7 +88,6 @@ exports.patientSignup = async (req, res) => {
     res.status(500).json({ error: "Signup failed", details: err.message });
   }
 };
-
 // -------------------- PATIENT VERIFY LOGIN --------------------
 exports.patientVerifyOtp = async (req, res) => {
   const { email, otp } = req.body;
