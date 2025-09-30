@@ -1,6 +1,6 @@
 const Appointment = require("../models/Appointment");
 const User = require("../models/User");
-const sendEmail = require("../utils/mailer");
+// const sendEmail = require("../utils/mailer");
 // At the top of your appointmentController.js
 // const transporter = require("../utils/nodemailerTransporter"); // adjust the path if needed
 
