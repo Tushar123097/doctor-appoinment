@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const transporter = require("../utils/nodemailerTransporter");
+const transporter = require("../utils/sendgridEmail");
 const User = require("../models/User");
 // const sendEmail = require("../utils/mailer");
 const sendEmail = require("../utils/sendgridEmail"); // adjust path

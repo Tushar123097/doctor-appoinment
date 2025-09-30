@@ -1,4 +1,4 @@
-const transporter = require("./nodemailerTransporter");
+const transporter = require("./sendgridEmail");
 
 const sendEmail = async (to, subject, text, html) => {
   try {
