@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const transporter = require("../utils/sendgridEmail");
+const transporter = require("../utils/nodemailerTransporter");
 const User = require("../models/User");
 // const sendEmail = require("../utils/mailer");
 const sendEmail = require("../utils/sendgridEmail"); // adjust path
@@ -66,21 +66,17 @@ exports.patientSignup = async (req, res) => {
   try {
     let user = await User.findOne({ email, role: "patient" });
 
-    // Generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
     if (!user) {
-      // Create new user
       user = new User({ name, email, role: "patient", otp });
       await user.save();
     } else {
-      // Update OTP for existing user
       user.otp = otp;
       await user.save();
     }
 
-    // Send OTP via SendGrid (non-blocking)
-    sendEmail(email, name, otp);
+    sendEmail(email, name, otp); // non-blocking
 
     res.json({ message: "OTP sent to email. Use this OTP to login anytime." });
   } catch (err) {
@@ -88,6 +84,7 @@ exports.patientSignup = async (req, res) => {
     res.status(500).json({ error: "Signup failed", details: err.message });
   }
 };
+
 // -------------------- PATIENT VERIFY LOGIN --------------------
 exports.patientVerifyOtp = async (req, res) => {
   const { email, otp } = req.body;

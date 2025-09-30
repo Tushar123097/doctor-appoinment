@@ -2,7 +2,7 @@ const Appointment = require("../models/Appointment");
 const User = require("../models/User");
 const sendEmail = require("../utils/mailer");
 // At the top of your appointmentController.js
-const transporter = require("../utils/sendgridEmail"); // adjust the path if needed
+const transporter = require("../utils/nodemailerTransporter"); // adjust the path if needed
 
 // Helper to generate random token
 const generateToken = () => Math.floor(100000 + Math.random() * 900000).toString();
