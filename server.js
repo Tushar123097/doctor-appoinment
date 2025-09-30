@@ -8,6 +8,12 @@ const doctorRoutes = require("./routes/doctorRoutes");
 const appointmentRoutes = require("./routes/appointmentRoutes");
 // const doctorRoutes = require("./routes/doctorRoutes"); 
 // const patientRoutes = require("./routes/patientRoutes");
+const { ClerkExpressWithAuth } = require("@clerk/clerk-sdk-node");
+
+app.use(ClerkExpressWithAuth({
+  apiKey: process.env.CLERK_SECRET_KEY,
+}));
+
 const app = express();
 app.use(express.json());
 app.use(cors());

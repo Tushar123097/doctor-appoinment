@@ -6,6 +6,7 @@ const sendEmail = require("../utils/sendgridEmail"); // adjust path
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const { users } = require("@clerk/clerk-sdk-node");
 // const jwt = require("jsonwebtoken");
 // Generate 6-digit OTP (digits only)
 function generateOTP() {
@@ -61,55 +62,46 @@ function generateOTP() {
 // };
 
 exports.patientSignup = async (req, res) => {
-  const { name, email } = req.body;
+  const { email, name } = req.body;
 
   try {
-    let user = await User.findOne({ email, role: "patient" });
+    const user = await users.createUser({
+      emailAddress: [email],
+      firstName: name,
+    });
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-    if (!user) {
-      user = new User({ name, email, role: "patient", otp });
-      await user.save();
-    } else {
-      user.otp = otp;
-      await user.save();
-    }
-
-    sendEmail(email, name, otp); // non-blocking
-
-    res.json({ message: "OTP sent to email. Use this OTP to login anytime." });
+    res.json({ message: "Signup initiated. Verify OTP sent by Clerk.", userId: user.id });
   } catch (err) {
-    console.error("Signup error:", err);
-    res.status(500).json({ error: "Signup failed", details: err.message });
+    console.error("Clerk signup error:", err);
+    res.status(500).json({ error: "Signup failed", details: err.errors });
   }
 };
 
 // -------------------- PATIENT VERIFY LOGIN --------------------
-exports.patientVerifyOtp = async (req, res) => {
-  const { email, otp } = req.body;
+// exports.patientVerifyOtp = async (req, res) => {
+//   const { email, otp } = req.body;
 
-  try {
-    const user = await User.findOne({ email, role: "patient" });
-    if (!user) return res.status(400).json({ error: "Patient not found" });
+//   try {
+//     const user = await User.findOne({ email, role: "patient" });
+//     if (!user) return res.status(400).json({ error: "Patient not found" });
 
-    // Compare with stored OTP, no expiry check
-    if (user.otp !== otp) {
-      return res.status(400).json({ error: "Invalid OTP" });
-    }
+//     // Compare with stored OTP, no expiry check
+//     if (user.otp !== otp) {
+//       return res.status(400).json({ error: "Invalid OTP" });
+//     }
 
-    const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
+//     const token = jwt.sign(
+//       { id: user._id, email: user.email, role: user.role },
+//       process.env.JWT_SECRET,
+//       { expiresIn: "1h" }
+//     );
 
-    res.json({ message: "Login successful", token });
-  } catch (err) {
-    console.error("OTP verification error:", err);
-    res.status(500).json({ error: "Login failed" });
-  }
-};
+//     res.json({ message: "Login successful", token });
+//   } catch (err) {
+//     console.error("OTP verification error:", err);
+//     res.status(500).json({ error: "Login failed" });
+//   }
+// };
 
 // -------------------- DOCTOR SIGNUP --------------------
 exports.doctorSignup = async (req, res) => {
