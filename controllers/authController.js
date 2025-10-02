@@ -7,281 +7,131 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const { users } = require("@clerk/clerk-sdk-node");
-// const jwt = require("jsonwebtoken");
-// Generate 6-digit OTP (digits only)
-function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-}
+/**
+ * Signup API for patient/doctor
+ * Body: { email, name, role }  // role = "patient" or "doctor"
+ */
+exports.signup = async (req, res) => {
+  const { email, name, role, password } = req.body;
 
-// -------------------- PATIENT SIGNUP --------------------
-// exports.patientSignup = async (req, res) => {
-//   const { name, email } = req.body;
-
-//   try {
-//     let user = await User.findOne({ email, role: "patient" });
-
-//     // If user exists, just send the existing OTP again
-//     if (user) {
-//       await transporter.sendMail({
-//         from: `"MyApp Team" <${process.env.EMAIL_USER}>`,
-//         to: email,
-//         subject: "Patient Signup OTP",
-//         text: `Hello ${name},\n\nYour OTP is: ${user.otp}\n\nUse this OTP to login anytime.`,
-//       });
-//       return res.json({ message: "OTP sent again to your email." });
-     
-
-//       // return res.json({ message: "OTP sent again to your email." });
-//     }
-
-//     // Generate OTP only if new user
-//     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-//     user = new User({
-//       name,
-//       email,
-//       role: "patient",
-//       otp,              // store permanently
-//       // otpExpires: optional, you can remove or set very long duration
-//     });
-
-//     await user.save();
-
-//     await transporter.sendMail({
-//       from: `"MyApp Team" <${process.env.EMAIL_USER}>`,
-//       to: email,
-//       subject: "Patient Signup OTP",
-//       text: `Hello ${name},\n\nYour OTP is: ${otp}\n\nUse this OTP to login anytime.`,
-//     });
-
-//     res.json({ message: "OTP sent to email. Use this OTP to login anytime." });
-//   } catch (err) {
-//     console.error("Signup error:", err);
-//     res.status(500).json({ error: "Signup failed", details: err.message });
-//   }
-// };
-
-exports.patientSignup = async (req, res) => {
-  const { email, name } = req.body;
+  if (!email || !name || !role || !password) {
+    return res.status(400).json({ success: false, message: "Email, name, role, and password are required" });
+  }
 
   try {
     const user = await users.createUser({
       emailAddress: [email],
       firstName: name,
+      password: password,                  // ✅ required by Clerk
+      username: email.split("@")[0],       // optional
+      publicMetadata: { role },
     });
 
-    res.json({ message: "Signup initiated. Verify OTP sent by Clerk.", userId: user.id });
+    res.json({
+      success: true,
+      message: `${role} signup successful. Verify email/OTP via Clerk flow.`,
+      userId: user.id,
+    });
   } catch (err) {
     console.error("Clerk signup error:", err);
-    res.status(500).json({ error: "Signup failed", details: err.errors });
+    res.status(500).json({
+      success: false,
+      message: err.errors?.[0]?.longMessage || err.message || "Signup failed",
+    });
   }
 };
 
-// -------------------- PATIENT VERIFY LOGIN --------------------
-// exports.patientVerifyOtp = async (req, res) => {
-//   const { email, otp } = req.body;
 
-//   try {
-//     const user = await User.findOne({ email, role: "patient" });
-//     if (!user) return res.status(400).json({ error: "Patient not found" });
-
-//     // Compare with stored OTP, no expiry check
-//     if (user.otp !== otp) {
-//       return res.status(400).json({ error: "Invalid OTP" });
-//     }
-
-//     const token = jwt.sign(
-//       { id: user._id, email: user.email, role: user.role },
-//       process.env.JWT_SECRET,
-//       { expiresIn: "1h" }
-//     );
-
-//     res.json({ message: "Login successful", token });
-//   } catch (err) {
-//     console.error("OTP verification error:", err);
-//     res.status(500).json({ error: "Login failed" });
-//   }
-// };
-
-// -------------------- DOCTOR SIGNUP --------------------
-exports.doctorSignup = async (req, res) => {
-  const { name, email, degree, experience, specialty } = req.body;
-
+exports.getProfile = async (req, res) => {
   try {
-    let user = await User.findOne({ email, role: "doctor" });
+    const { id } = req.params;
+    const user = await users.getUser(id);
 
-    // If doctor already exists, resend existing OTP
-    if (user) {
-      await transporter.sendMail({
-        from: `"MyApp Team" <${process.env.EMAIL_USER}>`,
-        to: email,
-        subject: "Doctor Signup OTP",
-        text: `Hello ${name},\n\nYour OTP is: ${user.otp}\n\nUse this OTP to login anytime.`,
-      });
-      return res.json({ message: "OTP sent again to your email." });
-    }
+    res.json({
+      success: true,
+      id: user.id,
+      email: user.emailAddresses[0].emailAddress,
+      name: user.firstName,
+      role: user.publicMetadata.role,
+    });
+  } catch (err) {
+    console.error("Get profile error:", err);
+    res.status(500).json({ success: false, message: err.message || "Failed to fetch profile" });
+  }
+};
 
-    // Generate OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+/**
+ * Update profile by Clerk userId
+ * PUT /profile/:id
+ * Body: { name, role }
+ */
+exports.updateProfile = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, role, degree, specialty, experience, availability } = req.body;
 
-    user = new User({
-      name,
-      email,
-      role: "doctor",
-      otp,  // store permanently
+    const user = await users.updateUser(id, {
+      firstName: name,
+      publicMetadata: {
+        role: role || undefined,
+        degree: degree || undefined,
+        specialty: specialty || undefined,
+        experience: experience || undefined,
+        availability: availability || undefined,
+      },
     });
 
-    await user.save();
-
-    await transporter.sendMail({
-      from: `"MyApp Team" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: "Doctor Signup OTP",
-      text: `Hello ${name},\n\nYour OTP is: ${otp}\n\nUse this OTP to login anytime.`,
+    res.json({
+      success: true,
+      message: "Profile updated successfully",
+      user: {
+        id: user.id,
+        name: user.firstName,
+        role: user.publicMetadata.role,
+        degree: user.publicMetadata.degree,
+        specialty: user.publicMetadata.specialty,
+        experience: user.publicMetadata.experience,
+        availability: user.publicMetadata.availability,
+      },
     });
-
-    res.json({ message: "Doctor OTP sent to email. Use this OTP to login anytime." });
   } catch (err) {
-    console.error("Doctor signup error:", err);
-    res.status(500).json({ error: "Signup failed", details: err.message });
+    console.error("Update profile error:", err);
+    res
+      .status(500)
+      .json({ success: false, message: err.message || "Failed to update profile" });
   }
 };
 
-// -------------------- DOCTOR VERIFY LOGIN --------------------
-exports.doctorVerifyOtp = async (req, res) => {
-  const { email, otp } = req.body;
-
-  try {
-    const user = await User.findOne({ email, role: "doctor" });
-    if (!user) return res.status(400).json({ error: "Doctor not found" });
-
-    // Compare with stored OTP (no expiry)
-    if (user.otp !== otp) {
-      return res.status(400).json({ error: "Invalid OTP" });
-    }
-
-    const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
-
-    res.json({ message: "Login successful", token });
-  } catch (err) {
-    console.error("Doctor OTP verification error:", err);
-    res.status(500).json({ error: "Login failed" });
-  }
-};
-// -------------------- UPDATE DOCTOR PROFILE --------------------
-exports.updateDoctorProfile = async (req, res) => {
-  try {
-    const doctorId = req.params.id;
-    // Destructure fields from req.body
-    const { degree, experience, specialty, availability , fees } = req.body;
-
-    const doctor = await User.findById(doctorId);
-    if (!doctor || doctor.role !== "doctor") {
-      return res.status(404).json({ error: "Doctor not found" });
-    }
-
-    // Update simple fields
-    if (degree) doctor.degree = degree;
-    if (experience) doctor.experience = experience;
-    if (specialty) doctor.specialty = specialty;
-    if (fees) doctor.fees = fees;
-
-    // Update availability
-    if (availability) {
-      let parsedAvailability;
-      if (typeof availability === "string") {
-        try {
-          parsedAvailability = JSON.parse(availability);
-        } catch (err) {
-          return res.status(400).json({ error: "Invalid JSON format for availability" });
-        }
-      } else {
-        parsedAvailability = availability;
-      }
-
-      if (Array.isArray(parsedAvailability)) {
-        doctor.availability = parsedAvailability;
-      } else {
-        return res.status(400).json({ error: "Availability must be an array of objects" });
-      }
-    }
-
-    await doctor.save();
-    res.json({ message: "Doctor profile updated successfully", doctor });
-  } catch (err) {
-    console.error("Update doctor profile error:", err);
-    res.status(500).json({ error: "Failed to update profile", details: err.message });
-  }
-};
-
-
-
-// Get patient profile
-exports.getPatientProfile = async (req, res) => {
-  try {
-    console.log("Incoming request for patient profile", req.params.id);
-
-    const patientId = req.params.id;
-    const patient = await User.findById(patientId);
-
-    if (!patient) {
-      console.log("No user found with this ID");
-      return res.status(404).json({ error: "Patient not found" });
-    }
-
-    if (patient.role !== "patient") {
-      console.log("User found but not a patient:", patient.role);
-      return res.status(404).json({ error: "Patient not found" });
-    }
-
-    res.json({ patient });
-  } catch (err) {
-    console.error("Get patient profile error:", err);
-    res.status(500).json({ error: "Failed to fetch profile" });
-  }
-};
-
-
-// Update patient profile
-exports.updatePatientProfile = async (req, res) => {
-  try {
-    const patientId = req.params.id;
-    const { name, email } = req.body; // add more fields if needed
-
-    const patient = await User.findById(patientId);
-    if (!patient || patient.role !== "patient") {
-      return res.status(404).json({ error: "Patient not found" });
-    }
-
-    if (name) patient.name = name;
-    if (email) patient.email = email;
-
-    await patient.save();
-
-    res.json({ message: "Patient profile updated successfully", patient });
-  } catch (err) {
-    console.error("Update patient profile error:", err);
-    res.status(500).json({ error: "Failed to update profile" });
-  }
-};
-// /  Fetch all registered doctors
 exports.getAllDoctors = async (req, res) => {
   try {
-    // Find all users with role 'doctor'
-    const doctors = await User.find({ role: "doctor" }).select(
-      "name email specialty degree experience availability"
-    );
+    // Fetch list of users from Clerk
+    const response = await users.getUserList({ limit: 100 }); // fetch up to 100 users
+    const allUsers = response.users || []; // fallback to empty array
+
+    // Filter only doctors
+    const doctorList = allUsers
+      .filter(user => user.publicMetadata?.role === "doctor")
+      .map(user => ({
+        id: user.id,
+        name: user.firstName,
+        email: user.emailAddresses[0]?.emailAddress || "",
+        role: user.publicMetadata.role,
+        degree: user.publicMetadata.degree || "",
+        specialty: user.publicMetadata.specialty || "",
+        experience: user.publicMetadata.experience || "",
+        availability: user.publicMetadata.availability || [],
+      }));
 
     res.json({
       success: true,
       message: "Doctors fetched successfully",
-      data: doctors,
+      data: doctorList,
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error("Get doctors error:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message || "Failed to fetch doctors",
+    });
   }
 };

@@ -1,23 +1,20 @@
 const express = require("express");
 const router = express.Router();
 const authController = require("../controllers/authController");
-const authMiddleware = require("../middleware/auth");
 
-// Patient signup & verify
-router.post("/patient/signup", authController.patientSignup);
-router.post("/patient/verify-otp", authController.patientVerifyOtp);
+// Patient signup
+router.post("/patient/signup", authController.signup);
 
-// Doctor signup & verify
-router.post("/doctor/signup", authController.doctorSignup);
-router.post("/doctor/verify-otp", authController.doctorVerifyOtp);
+// Doctor signup ✅
+router.post("/doctor/signup", authController.signup);
 
-// Doctor profile update (text only, no photo)
-//  router.put("/doctor/profile/:id", authController.updateDoctorProfile);
-// router.put("/profile/:id", authController.updateDoctorProfile);
-// router.put("/profile/:id", authController.updateDoctorProfile);
+// Get profile by ID
+router.get("/profile/:id", authController.getProfile);
 
+// Update profile
+router.put("/profile/:id", authController.updateProfile);
 
-// Patient sees all registered doctors
-router.get("/doctors", authMiddleware, authController.getAllDoctors);
+// Get all doctors
+router.get("/doctors", authController.getAllDoctors);
 
 module.exports = router;

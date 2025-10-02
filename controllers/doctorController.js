@@ -1,25 +1,35 @@
-// controllers/doctorController.js
-const User = require("../models/User");
+const { users } = require("@clerk/clerk-sdk-node");
 
-const getAllDoctors = async (req, res) => {
+exports.getAllDoctors = async (req, res) => {
   try {
-    const doctors = await User.find(
-      { role: "doctor" },
-      "-__v -otp -otpExpires"
-    );
+    const doctorList = [];
 
-    res.status(200).json({
+    // Fetch all users from Clerk (paginated if needed)
+    for await (const user of users.getUserList()) {
+      // Only include users with role "doctor"
+      if (user.publicMetadata?.role === "doctor") {
+        doctorList.push({
+          id: user.id,
+          name: user.firstName,
+          email: user.emailAddresses[0]?.emailAddress || "",
+          role: user.publicMetadata.role,
+          degree: user.publicMetadata.degree || null,
+          specialty: user.publicMetadata.specialty || null,
+          experience: user.publicMetadata.experience || null,
+          availability: user.publicMetadata.availability || [],
+          fees: user.publicMetadata.fees || null,
+          photo: user.profileImageUrl || null,
+        });
+      }
+    }
+
+    res.json({
       success: true,
       message: "Doctors fetched successfully",
-      data: doctors,
+      data: doctorList,
     });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: "Something went wrong while fetching doctors",
-      error: error.message,
-    });
+  } catch (err) {
+    console.error("Get doctors error:", err);
+    res.status(500).json({ success: false, message: err.message || "Failed to fetch doctors" });
   }
 };
-
-module.exports = { getAllDoctors }; 

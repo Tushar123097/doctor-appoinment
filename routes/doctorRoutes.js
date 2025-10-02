@@ -1,13 +1,12 @@
-// routes/doctorRoutes.js
 const express = require("express");
-const { getAllDoctors } = require("../controllers/doctorController");
-const authController = require("../controllers/authController");
-
 const router = express.Router();
+const authController = require("../controllers/authController");
+const authMiddleware = require("../middleware/auth");
 
-// Patient can view doctors
-router.get("/doctors", getAllDoctors);
-// Update doctor profile
-router.put("/profile/:id", authController.updateDoctorProfile);
+// Patient can view all doctors
+router.get("/doctors", authMiddleware, authController.getAllDoctors);
+
+// Doctor can update their profile
+router.put("/profile/:id", authMiddleware, authController.updateProfile);
 
 module.exports = router;

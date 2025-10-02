@@ -1,27 +1,26 @@
 const Appointment = require("../models/Appointment");
-const User = require("../models/User");
-// const sendEmail = require("../utils/mailer");
-// At the top of your appointmentController.js
-// const transporter = require("../utils/nodemailerTransporter"); // adjust the path if needed
+const { users } = require("@clerk/clerk-sdk-node");
 
-// Helper to generate random token
-const generateToken = () => Math.floor(100000 + Math.random() * 900000).toString();
-
-
+/**
+ * Book an appointment
+ * POST /appointments
+ * Body: { doctorId, date, time, fees }
+ * patientId comes from logged-in user
+ */
 exports.bookAppointment = async (req, res) => {
   try {
     const { doctorId, date, time, fees } = req.body;
-    const patientId = req.user._id; // logged-in patient
+    const patientId = req.user.id; // Clerk userId of logged-in patient
 
-    // Fetch doctor
-    const doctor = await User.findById(doctorId);
-    if (!doctor || doctor.role !== "doctor") {
+    // Check doctor exists in Clerk
+    const doctor = await users.getUser(doctorId);
+    if (!doctor || doctor.publicMetadata.role !== "doctor") {
       return res.status(400).json({ success: false, message: "Invalid doctor" });
     }
 
-    // Fetch patient
-    const patient = await User.findById(patientId);
-    if (!patient || patient.role !== "patient") {
+    // Check patient exists in Clerk
+    const patient = await users.getUser(patientId);
+    if (!patient || patient.publicMetadata.role !== "patient") {
       return res.status(400).json({ success: false, message: "Invalid patient" });
     }
 
@@ -31,39 +30,12 @@ exports.bookAppointment = async (req, res) => {
       doctorId,
       date,
       time,
-      // fees,
-      status: "waiting", // ✅ default status
+      fees,
+      status: "waiting",
       token: Math.floor(100000 + Math.random() * 900000).toString(),
     });
 
     await appointment.save();
-
-    // Prepare email to patient
-    const subject = "Appointment Booked Successfully";
-    const text = `Hello ${patient.name}, Your appointment with Dr. ${doctor.name} is confirmed.
-Date: ${date}
-Time: ${time}
-Token: ${appointment.token}
-Fees: ₹${fees}
-Status: ${appointment.status}`;
-
-    const html = `<h3>Hello ${patient.name}</h3>
-<p>Your appointment with Dr. <b>${doctor.name}</b> is confirmed.</p>
-<p><b>Date:</b> ${date} <br/>
-<b>Time:</b> ${time} <br/>
-<b>Token:</b> ${appointment.token} <br/>
-<b>Fees:</b> ₹${fees} <br/>
-<b>Status:</b> ${appointment.status}</p>
-<p>Thank you!</p>`;
-
-    // Send email using friendly sender name
-    await sendEmail(
-      patient.email,
-      subject,
-      text,
-      html,
-      '"Hospital Management" <prajapatit097@gmail.com>' // replace with your email
-    );
 
     res.status(201).json({
       success: true,
@@ -75,17 +47,15 @@ Status: ${appointment.status}`;
     res.status(500).json({ success: false, message: "Booking failed", error: err.message });
   }
 };
-// module.exports = { bookAppointment };
 
-// 🆕 Get all appointments of a patient
-
+/**
+ * Get all appointments of a patient
+ */
 exports.getPatientAppointments = async (req, res) => {
   try {
-    const patientId = req.user._id;
+    const patientId = req.user.id;
 
-    const appointments = await Appointment.find({ patientId })
-      .populate("doctorId", "name email specialty degree experience photo availability")
-      .sort({ createdAt: -1 });
+    const appointments = await Appointment.find({ patientId }).sort({ createdAt: -1 });
 
     res.json({ success: true, message: "Appointments fetched", data: appointments });
   } catch (err) {
@@ -93,18 +63,18 @@ exports.getPatientAppointments = async (req, res) => {
   }
 };
 
-// 🆕 Get all appointments for a doctor
+/**
+ * Get all appointments for a doctor
+ */
 exports.getDoctorAppointments = async (req, res) => {
   try {
-    const doctorId = req.user._id;
+    const doctorId = req.user.id;
     const { status } = req.query;
 
     const query = { doctorId };
     if (status) query.status = status;
 
-    const appointments = await Appointment.find(query)
-      .populate("patientId", "name email")
-      .sort({ createdAt: -1 });
+    const appointments = await Appointment.find(query).sort({ createdAt: -1 });
 
     res.json({ success: true, message: "Appointments fetched", data: appointments });
   } catch (err) {
@@ -112,27 +82,29 @@ exports.getDoctorAppointments = async (req, res) => {
   }
 };
 
-
-// 🆕 Update appointment status
+/**
+ * Update appointment status
+ * PUT /appointments/:id/status
+ * Body: { status }
+ */
 exports.updateAppointmentStatus = async (req, res) => {
   try {
-    const doctorId = req.user._id; // logged-in doctor
+    const doctorId = req.user.id;
     const { id } = req.params;
-    const { status } = req.body; // new status from doctor
+    const { status } = req.body;
 
-    // Allowed statuses
     const allowedStatuses = ["waiting", "approved", "completed", "cancelled"];
     if (!allowedStatuses.includes(status)) {
       return res.status(400).json({ success: false, message: "Invalid status" });
     }
 
-    const appointment = await Appointment.findById(id).populate("patientId", "email name");
+    const appointment = await Appointment.findById(id);
     if (!appointment) {
       return res.status(404).json({ success: false, message: "Appointment not found" });
     }
 
-    // Check if logged-in doctor owns this appointment
-    if (!appointment.doctorId.equals(doctorId)) {
+    // Check doctor owns appointment
+    if (appointment.doctorId !== doctorId) {
       return res.status(403).json({ success: false, message: "Forbidden" });
     }
 
@@ -140,28 +112,8 @@ exports.updateAppointmentStatus = async (req, res) => {
     appointment.status = status;
     await appointment.save();
 
-    // Email content based on status
-    let subject, text;
-    if (status === "completed") {
-      subject = "Checkup Completed";
-      text = `Hello ${appointment.patientId.name},\n\nYour checkup with Dr. ${req.user.name} is completed.`;
-    } else if (status === "approved") {
-      subject = "Appointment Approved";
-      text = `Hello ${appointment.patientId.name},\n\nYour appointment with Dr. ${req.user.name} has been approved.`;
-    } else if (status === "cancelled") {
-      subject = "Appointment Cancelled";
-      text = `Hello ${appointment.patientId.name},\n\nYour appointment with Dr. ${req.user.name} has been cancelled.`;
-    }
-
-    // Send email only if needed
-    if (subject) {
-      await transporter.sendMail({
-        from: `"Hospital Management" <${process.env.EMAIL_USER}>`,
-        to: appointment.patientId.email,
-        subject,
-        text,
-      });
-    }
+    // Emails disabled for now
+    // Do not send emails on status update
 
     res.json({ success: true, message: "Appointment status updated", appointment });
   } catch (err) {
