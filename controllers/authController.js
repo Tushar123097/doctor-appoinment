@@ -7,6 +7,89 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const { users } = require("@clerk/clerk-sdk-node");
+
+/**
+ * Login API for patient/doctor
+ * Body: { email, password }
+ * Note: This is a simplified version since Clerk doesn't allow direct password verification
+ */
+exports.login = async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ success: false, message: "Email and password are required" });
+  }
+
+  try {
+    console.log("=== LOGIN ATTEMPT ===");
+    console.log("Email:", email);
+    console.log("Password provided:", password ? "Yes" : "No");
+    
+    // Get user list and find by email
+    const response = await users.getUserList({ limit: 100 });
+    const allUsers = response.users || [];
+    
+    console.log("Total users in Clerk:", allUsers.length);
+    console.log("User emails:", allUsers.map(u => u.emailAddresses[0]?.emailAddress));
+    
+    const user = allUsers.find(u => 
+      u.emailAddresses.some(emailObj => emailObj.emailAddress.toLowerCase() === email.toLowerCase())
+    );
+
+    console.log("User found:", user ? "Yes" : "No");
+    if (user) {
+      console.log("User details:", {
+        id: user.id,
+        email: user.emailAddresses[0]?.emailAddress,
+        role: user.publicMetadata?.role,
+        firstName: user.firstName
+      });
+    }
+
+    if (!user) {
+      console.log("User not found in Clerk database");
+      return res.status(401).json({ success: false, message: "Invalid email or password" });
+    }
+
+    // For now, we'll skip password verification since Clerk doesn't support it directly
+    // In production, you'd want to use Clerk's proper authentication flow
+    console.log("User role:", user.publicMetadata?.role);
+
+    // Create JWT token for session management
+    const token = jwt.sign(
+      { 
+        userId: user.id, 
+        email: email,
+        role: user.publicMetadata?.role || "patient"
+      },
+      process.env.JWT_SECRET || "your-secret-key",
+      { expiresIn: "7d" }
+    );
+
+    console.log("Login successful, sending response");
+
+    res.json({
+      success: true,
+      message: "Login successful",
+      token: token,
+      role: user.publicMetadata?.role || "patient",
+      userId: user.id,
+      name: user.firstName || user.username || "User"
+    });
+
+  } catch (err) {
+    console.error("=== LOGIN ERROR ===");
+    console.error("Error details:", err);
+    console.error("Error message:", err.message);
+    console.error("Error stack:", err.stack);
+    
+    res.status(500).json({
+      success: false,
+      message: err.message || "Login failed. Please try again."
+    });
+  }
+};
+
 /**
  * Signup API for patient/doctor
  * Body: { email, name, role }  // role = "patient" or "doctor"

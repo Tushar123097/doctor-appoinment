@@ -8,6 +8,9 @@ router.post("/patient/signup", authController.signup);
 // Doctor signup ✅
 router.post("/doctor/signup", authController.signup);
 
+// Login endpoint for both patients and doctors
+router.post("/login", authController.login);
+
 // Get profile by ID
 router.get("/profile/:id", authController.getProfile);
 
