@@ -22,7 +22,9 @@ app.get("/api/test", (req, res) => {
 app.get("/api/debug/users", async (req, res) => {
   try {
     const { users } = require("@clerk/clerk-sdk-node");
+    console.log("Fetching users from Clerk...");
     const response = await users.getUserList({ limit: 10 });
+    console.log("Clerk response:", response);
     const allUsers = response.users || [];
     
     const userList = allUsers.map(user => ({
@@ -34,8 +36,19 @@ app.get("/api/debug/users", async (req, res) => {
     
     res.json({ success: true, users: userList, total: allUsers.length });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    console.error("Debug users error:", err);
+    res.status(500).json({ success: false, error: err.message, stack: err.stack });
   }
+});
+
+// Debug endpoint to check Clerk configuration
+app.get("/api/debug/clerk", (req, res) => {
+  res.json({
+    success: true,
+    clerkSecretKey: process.env.CLERK_SECRET_KEY ? "Set" : "Not set",
+    clerkPublishableKey: process.env.CLERK_PUBLISHABLE_KEY ? "Set" : "Not set",
+    jwtSecret: process.env.JWT_SECRET ? "Set" : "Not set"
+  });
 });
 
 // Routes (without Clerk middleware for now - we'll handle Clerk in the controller)
