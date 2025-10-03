@@ -20,6 +20,7 @@
 // module.exports = authMiddleware;
 // middleware/authMiddleware.js
 const jwt = require("jsonwebtoken");
+const User = require("../models/User");
 
 const authMiddleware = async (req, res, next) => {
   try {
@@ -31,12 +32,18 @@ const authMiddleware = async (req, res, next) => {
     const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Since we're using Clerk, we don't need to query MongoDB for user
-    // The JWT token contains all necessary user info
+    // Get user from MongoDB to ensure they still exist
+    const user = await User.findById(decoded.userId).select("-password");
+    
+    if (!user) {
+      return res.status(401).json({ success: false, message: "User not found" });
+    }
+
     req.user = {
-      userId: decoded.userId,
-      email: decoded.email,
-      role: decoded.role
+      userId: user._id,
+      email: user.email,
+      role: user.role,
+      name: user.name
     };
     
     next();

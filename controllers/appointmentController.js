@@ -1,5 +1,5 @@
 const Appointment = require("../models/Appointment");
-const { users } = require("@clerk/clerk-sdk-node");
+const User = require("../models/User");
 
 /**
  * Book an appointment
@@ -75,14 +75,14 @@ exports.getPatientAppointments = async (req, res) => {
     const enhancedAppointments = await Promise.all(
       appointments.map(async (appointment) => {
         try {
-          // Get doctor info from Clerk
-          const doctor = await users.getUser(appointment.doctorId);
+          // Get doctor info from MongoDB
+          const doctor = await User.findById(appointment.doctorId).select("-password");
           return {
             ...appointment.toObject(),
             doctor: {
-              name: doctor.firstName || "Unknown Doctor",
-              email: doctor.emailAddresses[0]?.emailAddress || "",
-              specialty: doctor.publicMetadata?.specialty || "General Practice"
+              name: doctor?.name || "Unknown Doctor",
+              email: doctor?.email || "",
+              specialty: doctor?.specialty || "General Practice"
             }
           };
         } catch (err) {
@@ -130,14 +130,14 @@ exports.getDoctorAppointments = async (req, res) => {
     const enhancedAppointments = await Promise.all(
       appointments.map(async (appointment) => {
         try {
-          // Get patient info from Clerk
-          const patient = await users.getUser(appointment.patientId);
+          // Get patient info from MongoDB
+          const patient = await User.findById(appointment.patientId).select("-password");
           return {
             ...appointment.toObject(),
             patient: {
-              name: patient.firstName || "Unknown Patient",
-              email: patient.emailAddresses[0]?.emailAddress || "",
-              phone: patient.publicMetadata?.phone || "No phone"
+              name: patient?.name || "Unknown Patient",
+              email: patient?.email || "",
+              phone: patient?.phone || "No phone"
             }
           };
         } catch (err) {

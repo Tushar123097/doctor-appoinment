@@ -6,7 +6,6 @@ const authRoutes = require("./routes/authRoutes");
 const appointmentRoutes = require("./routes/appointmentRoutes");
 const doctorRoutes = require("./routes/doctorRoutes");
 const patientRoutes = require("./routes/patientRoutes");
-const { ClerkExpressWithAuth } = require("@clerk/clerk-sdk-node");
 
 const app = express();
 
@@ -21,18 +20,19 @@ app.get("/api/test", (req, res) => {
 // Debug endpoint to check users
 app.get("/api/debug/users", async (req, res) => {
   try {
-    const { users } = require("@clerk/clerk-sdk-node");
-    console.log("Fetching users from Clerk...");
-    const response = await users.getUserList({ limit: 10 });
-    console.log("Clerk response:", response);
-    const allUsers = response.users || [];
+    const User = require("./models/User");
+    console.log("Fetching users from MongoDB...");
+    const allUsers = await User.find({}).select("-password");
     
     const userList = allUsers.map(user => ({
-      id: user.id,
-      email: user.emailAddresses[0]?.emailAddress,
-      role: user.publicMetadata?.role,
-      firstName: user.firstName,
-      fullMetadata: user.publicMetadata
+      id: user._id,
+      email: user.email,
+      role: user.role,
+      name: user.name,
+      specialty: user.specialty,
+      degree: user.degree,
+      experience: user.experience,
+      fees: user.fees
     }));
     
     console.log("Processed user list:", userList);
@@ -44,58 +44,14 @@ app.get("/api/debug/users", async (req, res) => {
   }
 });
 
-// Debug endpoint to check Clerk configuration
-app.get("/api/debug/clerk", (req, res) => {
+// Debug endpoint to check configuration
+app.get("/api/debug/config", (req, res) => {
   res.json({
     success: true,
-    clerkSecretKey: process.env.CLERK_SECRET_KEY ? "Set" : "Not set",
-    clerkPublishableKey: process.env.CLERK_PUBLISHABLE_KEY ? "Set" : "Not set",
-    jwtSecret: process.env.JWT_SECRET ? "Set" : "Not set"
+    mongoUri: process.env.MONGO_URI ? "Set" : "Not set",
+    jwtSecret: process.env.JWT_SECRET ? "Set" : "Not set",
+    port: process.env.PORT || 3000
   });
-});
-
-// Fix user role endpoint (for debugging)
-app.post("/api/debug/fix-user-role", async (req, res) => {
-  try {
-    const { email, role } = req.body;
-    
-    if (!email || !role) {
-      return res.status(400).json({ success: false, message: "Email and role are required" });
-    }
-
-    const { users } = require("@clerk/clerk-sdk-node");
-    const response = await users.getUserList({ limit: 100 });
-    const allUsers = response.users || [];
-    
-    const user = allUsers.find(u => 
-      u.emailAddresses.some(emailObj => emailObj.emailAddress.toLowerCase() === email.toLowerCase())
-    );
-
-    if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
-    }
-
-    // Update user role
-    const updatedUser = await users.updateUser(user.id, {
-      publicMetadata: {
-        ...user.publicMetadata,
-        role: role
-      }
-    });
-
-    res.json({
-      success: true,
-      message: "User role updated successfully",
-      user: {
-        id: updatedUser.id,
-        email: updatedUser.emailAddresses[0]?.emailAddress,
-        role: updatedUser.publicMetadata?.role
-      }
-    });
-  } catch (err) {
-    console.error("Fix user role error:", err);
-    res.status(500).json({ success: false, error: err.message });
-  }
 });
 
 // Routes (without Clerk middleware for now - we'll handle Clerk in the controller)

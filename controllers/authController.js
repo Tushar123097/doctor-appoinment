@@ -1,17 +1,9 @@
 const jwt = require("jsonwebtoken");
-// const transporter = require("../utils/nodemailerTransporter");
 const User = require("../models/User");
-// const sendEmail = require("../utils/mailer");
-// const sendEmail = require("../utils/sendgridEmail"); // adjust path
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
-const { users } = require("@clerk/clerk-sdk-node");
 
 /**
  * Login API for patient/doctor
  * Body: { email, password }
- * Temporary solution: Store user data in MongoDB and verify against it
  */
 exports.login = async (req, res) => {
   const { email, password } = req.body;
@@ -23,92 +15,53 @@ exports.login = async (req, res) => {
   try {
     console.log("=== LOGIN ATTEMPT ===");
     console.log("Email:", email);
+
+    // Find user in MongoDB
+    const user = await User.findOne({ email: email.toLowerCase() });
     
-    // First try to get user from Clerk
-    let user = null;
-    let clerkUsers = [];
+    if (!user) {
+      console.log("User not found");
+      return res.status(401).json({ success: false, message: "Invalid email or password" });
+    }
+
+    console.log("User found:", {
+      id: user._id,
+      email: user.email,
+      role: user.role,
+      name: user.name
+    });
+
+    // Check password
+    const isPasswordValid = await user.comparePassword(password);
     
-    try {
-      const response = await users.getUserList({ limit: 100 });
-      clerkUsers = response.users || [];
-      console.log("Total users in Clerk:", clerkUsers.length);
-      
-      user = clerkUsers.find(u => 
-        u.emailAddresses.some(emailObj => emailObj.emailAddress.toLowerCase() === email.toLowerCase())
-      );
-    } catch (clerkError) {
-      console.error("Clerk API error:", clerkError);
+    if (!isPasswordValid) {
+      console.log("Invalid password");
+      return res.status(401).json({ success: false, message: "Invalid email or password" });
     }
 
-    // If user found in Clerk, use that
-    if (user) {
-      console.log("User found in Clerk");
-      console.log("User details:", {
-        id: user.id,
-        email: user.emailAddresses[0]?.emailAddress,
-        firstName: user.firstName,
-        publicMetadata: user.publicMetadata
-      });
-      console.log("User role from metadata:", user.publicMetadata?.role);
-      
-      const userRole = user.publicMetadata?.role || "patient";
-      console.log("Final role being used:", userRole);
-      
-      const token = jwt.sign(
-        { 
-          userId: user.id, 
-          email: email,
-          role: userRole
-        },
-        process.env.JWT_SECRET || "your-secret-key",
-        { expiresIn: "7d" }
-      );
+    console.log("Password valid, creating token");
 
-      console.log("Sending login response with role:", userRole);
+    // Create JWT token
+    const token = jwt.sign(
+      { 
+        userId: user._id, 
+        email: user.email,
+        role: user.role
+      },
+      process.env.JWT_SECRET || "your-secret-key",
+      { expiresIn: "7d" }
+    );
 
-      return res.json({
-        success: true,
-        message: "Login successful",
-        token: token,
-        role: userRole,
-        userId: user.id,
-        name: user.firstName || "User"
-      });
-    }
+    console.log("Login successful for role:", user.role);
 
-    // Fallback: Check if this is a test user or allow login for demo purposes
-    // This is a temporary solution for testing
-    if (email && password) {
-      console.log("Using fallback login for demo purposes");
-      
-      // Determine role based on email or default to patient
-      const role = email.includes("doctor") ? "doctor" : "patient";
-      console.log("Determined role:", role, "for email:", email);
-      
-      const userId = "demo_" + Date.now();
-      const token = jwt.sign(
-        { 
-          userId: userId, 
-          email: email,
-          role: role
-        },
-        process.env.JWT_SECRET || "your-secret-key",
-        { expiresIn: "7d" }
-      );
-
-      console.log("Sending response with role:", role);
-
-      return res.json({
-        success: true,
-        message: "Login successful (demo mode)",
-        token: token,
-        role: role,
-        userId: userId,
-        name: "Demo User"
-      });
-    }
-
-    return res.status(401).json({ success: false, message: "Invalid email or password" });
+    res.json({
+      success: true,
+      message: "Login successful",
+      token: token,
+      role: user.role,
+      userId: user._id,
+      name: user.name
+    });
 
   } catch (err) {
     console.error("=== LOGIN ERROR ===");
@@ -123,7 +76,7 @@ exports.login = async (req, res) => {
 
 /**
  * Signup API for patient/doctor
- * Body: { email, name, role }  // role = "patient" or "doctor"
+ * Body: { email, name, role, password }
  */
 exports.signup = async (req, res) => {
   const { email, name, role, password } = req.body;
@@ -132,46 +85,60 @@ exports.signup = async (req, res) => {
     return res.status(400).json({ success: false, message: "Email, name, role, and password are required" });
   }
 
+  if (!["patient", "doctor"].includes(role)) {
+    return res.status(400).json({ success: false, message: "Role must be either 'patient' or 'doctor'" });
+  }
+
   try {
     console.log("=== SIGNUP ATTEMPT ===");
     console.log("Email:", email);
     console.log("Name:", name);
     console.log("Role:", role);
-    console.log("Password provided:", password ? "Yes" : "No");
+
+    // Check if user already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
     
-    const userData = {
-      emailAddress: [email],
-      firstName: name,
-      password: password,
-      username: email.split("@")[0],
-      publicMetadata: { role },
-    };
-    
-    console.log("Creating user with data:", userData);
-    
-    const user = await users.createUser(userData);
-    
+    if (existingUser) {
+      console.log("User already exists");
+      return res.status(400).json({ success: false, message: "User with this email already exists" });
+    }
+
+    // Create new user
+    const user = new User({
+      name,
+      email: email.toLowerCase(),
+      password, // Will be hashed by the pre-save middleware
+      role
+    });
+
+    await user.save();
+
     console.log("User created successfully:", {
-      id: user.id,
-      email: user.emailAddresses[0]?.emailAddress,
-      role: user.publicMetadata?.role
+      id: user._id,
+      email: user.email,
+      role: user.role,
+      name: user.name
     });
 
     res.json({
       success: true,
-      message: `${role} signup successful. Verify email/OTP via Clerk flow.`,
-      userId: user.id,
+      message: `${role} signup successful!`,
+      userId: user._id,
     });
   } catch (err) {
     console.error("=== SIGNUP ERROR ===");
     console.error("Error details:", err);
-    console.error("Error message:", err.message);
-    console.error("Error errors array:", err.errors);
-    console.error("Error stack:", err.stack);
+    
+    if (err.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "User with this email already exists"
+      });
+    }
     
     res.status(500).json({
       success: false,
-      message: err.errors?.[0]?.longMessage || err.message || "Signup failed",
+      message: "Signup failed. Please try again."
     });
   }
 };
@@ -183,26 +150,32 @@ exports.getProfile = async (req, res) => {
     console.log("User ID:", req.params.id);
 
     const { id } = req.params;
-    const user = await users.getUser(id);
+    const user = await User.findById(id).select("-password"); // Exclude password
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
 
     console.log("User data:", {
-      id: user.id,
-      name: user.firstName,
-      email: user.emailAddresses[0]?.emailAddress,
-      metadata: user.publicMetadata
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role
     });
 
     res.json({
       success: true,
-      id: user.id,
-      email: user.emailAddresses[0]?.emailAddress,
-      name: user.firstName,
-      role: user.publicMetadata?.role,
-      degree: user.publicMetadata?.degree,
-      specialty: user.publicMetadata?.specialty,
-      experience: user.publicMetadata?.experience,
-      availability: user.publicMetadata?.availability || [],
-      fees: user.publicMetadata?.fees,
+      id: user._id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      degree: user.degree,
+      specialty: user.specialty,
+      experience: user.experience,
+      availability: user.availability || [],
+      fees: user.fees,
+      phone: user.phone,
+      address: user.address
     });
   } catch (err) {
     console.error("Get profile error:", err);
@@ -211,46 +184,54 @@ exports.getProfile = async (req, res) => {
 };
 
 /**
- * Update profile by Clerk userId
+ * Update profile by user ID
  * PUT /profile/:id
- * Body: { name, role }
+ * Body: { name, degree, specialty, experience, availability, fees, phone, address }
  */
 exports.updateProfile = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, role, degree, specialty, experience, availability, fees } = req.body;
+    const { name, degree, specialty, experience, availability, fees, phone, address } = req.body;
 
     console.log("=== UPDATE PROFILE ===");
     console.log("User ID:", id);
-    console.log("Update data:", { name, role, degree, specialty, experience, availability, fees });
+    console.log("Update data:", { name, degree, specialty, experience, availability, fees, phone, address });
 
-    const user = await users.updateUser(id, {
-      firstName: name,
-      publicMetadata: {
-        role: role || "doctor",
-        degree: degree || undefined,
-        specialty: specialty || undefined,
-        experience: experience || undefined,
-        availability: availability || undefined,
-        fees: fees || undefined,
-      },
-    });
+    const user = await User.findById(id);
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
 
-    console.log("Profile updated successfully:", user.publicMetadata);
+    // Update fields
+    if (name) user.name = name;
+    if (degree) user.degree = degree;
+    if (specialty) user.specialty = specialty;
+    if (experience) user.experience = experience;
+    if (availability) user.availability = availability;
+    if (fees) user.fees = fees;
+    if (phone) user.phone = phone;
+    if (address) user.address = address;
+
+    await user.save();
+
+    console.log("Profile updated successfully");
 
     res.json({
       success: true,
       message: "Profile updated successfully",
       user: {
-        id: user.id,
-        name: user.firstName,
-        email: user.emailAddresses[0]?.emailAddress,
-        role: user.publicMetadata.role,
-        degree: user.publicMetadata.degree,
-        specialty: user.publicMetadata.specialty,
-        experience: user.publicMetadata.experience,
-        availability: user.publicMetadata.availability,
-        fees: user.publicMetadata.fees,
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        degree: user.degree,
+        specialty: user.specialty,
+        experience: user.experience,
+        availability: user.availability,
+        fees: user.fees,
+        phone: user.phone,
+        address: user.address
       },
     });
   } catch (err) {
@@ -266,30 +247,26 @@ exports.getAllDoctors = async (req, res) => {
     console.log("=== GET ALL DOCTORS ===");
     console.log("User from token:", req.user);
     
-    // Fetch list of users from Clerk
-    const response = await users.getUserList({ limit: 100 }); // fetch up to 100 users
-    const allUsers = response.users || []; // fallback to empty array
+    // Fetch all doctors from MongoDB
+    const doctors = await User.find({ role: "doctor" }).select("-password");
     
-    console.log("Total users from Clerk:", allUsers.length);
+    console.log("Total doctors found:", doctors.length);
 
-    // Filter only doctors
-    const doctorList = allUsers
-      .filter(user => user.publicMetadata?.role === "doctor")
-      .map(user => ({
-        id: user.id,
-        name: user.firstName || "Unknown Doctor",
-        email: user.emailAddresses[0]?.emailAddress || "",
-        role: user.publicMetadata.role,
-        degree: user.publicMetadata.degree || "",
-        specialty: user.publicMetadata.specialty || "General Practice",
-        experience: user.publicMetadata.experience || "5+ years",
-        fees: user.publicMetadata.fees || 500,
-        availability: user.publicMetadata.availability || [],
-        image: user.imageUrl || "https://randomuser.me/api/portraits/women/68.jpg"
-      }));
+    // Format doctor list
+    const doctorList = doctors.map(doctor => ({
+      id: doctor._id,
+      name: doctor.name || "Unknown Doctor",
+      email: doctor.email || "",
+      role: doctor.role,
+      degree: doctor.degree || "",
+      specialty: doctor.specialty || "General Practice",
+      experience: doctor.experience || "5+ years",
+      fees: doctor.fees || 500,
+      availability: doctor.availability || [],
+      image: "https://randomuser.me/api/portraits/women/68.jpg" // Default image
+    }));
 
-    console.log("Filtered doctors:", doctorList.length);
-    console.log("Doctor list:", doctorList);
+    console.log("Formatted doctor list:", doctorList);
 
     res.json({
       success: true,
