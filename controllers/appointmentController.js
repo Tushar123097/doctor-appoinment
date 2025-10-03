@@ -3,44 +3,53 @@ const { users } = require("@clerk/clerk-sdk-node");
 
 /**
  * Book an appointment
- * POST /appointments
- * Body: { doctorId, date, time, fees }
+ * POST /appointments/book
+ * Body: { doctorId, date, symptoms }
  * patientId comes from logged-in user
  */
 exports.bookAppointment = async (req, res) => {
   try {
-    const { doctorId, date, time, fees } = req.body;
-    const patientId = req.user.id; // Clerk userId of logged-in patient
+    console.log("=== BOOKING APPOINTMENT ===");
+    console.log("Request body:", req.body);
+    console.log("User from token:", req.user);
 
-    // Check doctor exists in Clerk
-    const doctor = await users.getUser(doctorId);
-    if (!doctor || doctor.publicMetadata.role !== "doctor") {
-      return res.status(400).json({ success: false, message: "Invalid doctor" });
+    const { doctorId, date, symptoms } = req.body;
+    const patientId = req.user.userId; // From JWT token
+
+    if (!doctorId || !date) {
+      return res.status(400).json({ success: false, message: "Doctor ID and date are required" });
     }
 
-    // Check patient exists in Clerk
-    const patient = await users.getUser(patientId);
-    if (!patient || patient.publicMetadata.role !== "patient") {
-      return res.status(400).json({ success: false, message: "Invalid patient" });
-    }
+    // Generate token number (simple sequential for now)
+    const existingAppointments = await Appointment.find({ doctorId, date });
+    const tokenNumber = existingAppointments.length + 1;
 
     // Create appointment with status 'waiting'
     const appointment = new Appointment({
       patientId,
       doctorId,
       date,
-      time,
-      fees,
+      symptoms: symptoms || "General consultation",
       status: "waiting",
-      token: Math.floor(100000 + Math.random() * 900000).toString(),
+      token: tokenNumber,
+      fees: 500, // Default fee
     });
 
     await appointment.save();
 
+    console.log("Appointment created:", appointment);
+
     res.status(201).json({
       success: true,
       message: "Appointment booked successfully",
-      data: appointment,
+      appointment: {
+        id: appointment._id,
+        doctorId: appointment.doctorId,
+        date: appointment.date,
+        token: appointment.token,
+        status: appointment.status,
+        fees: appointment.fees
+      }
     });
   } catch (err) {
     console.error("Booking failed:", err);
@@ -53,12 +62,47 @@ exports.bookAppointment = async (req, res) => {
  */
 exports.getPatientAppointments = async (req, res) => {
   try {
-    const patientId = req.user.id;
+    console.log("=== GET PATIENT APPOINTMENTS ===");
+    console.log("User from token:", req.user);
+
+    const patientId = req.user.userId;
+    console.log("Looking for appointments for patient:", patientId);
 
     const appointments = await Appointment.find({ patientId }).sort({ createdAt: -1 });
+    console.log("Found appointments:", appointments.length);
 
-    res.json({ success: true, message: "Appointments fetched", data: appointments });
+    // Enhance appointments with doctor info
+    const enhancedAppointments = await Promise.all(
+      appointments.map(async (appointment) => {
+        try {
+          // Get doctor info from Clerk
+          const doctor = await users.getUser(appointment.doctorId);
+          return {
+            ...appointment.toObject(),
+            doctor: {
+              name: doctor.firstName || "Unknown Doctor",
+              email: doctor.emailAddresses[0]?.emailAddress || "",
+              specialty: doctor.publicMetadata?.specialty || "General Practice"
+            }
+          };
+        } catch (err) {
+          console.error("Error fetching doctor info:", err);
+          return {
+            ...appointment.toObject(),
+            doctor: {
+              name: "Unknown Doctor",
+              email: "",
+              specialty: "General Practice"
+            }
+          };
+        }
+      })
+    );
+
+    console.log("Enhanced appointments:", enhancedAppointments);
+    res.json(enhancedAppointments);
   } catch (err) {
+    console.error("Error fetching patient appointments:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -68,16 +112,52 @@ exports.getPatientAppointments = async (req, res) => {
  */
 exports.getDoctorAppointments = async (req, res) => {
   try {
-    const doctorId = req.user.id;
+    console.log("=== GET DOCTOR APPOINTMENTS ===");
+    console.log("User from token:", req.user);
+
+    const doctorId = req.user.userId;
     const { status } = req.query;
 
     const query = { doctorId };
     if (status) query.status = status;
 
-    const appointments = await Appointment.find(query).sort({ createdAt: -1 });
+    console.log("Query:", query);
 
-    res.json({ success: true, message: "Appointments fetched", data: appointments });
+    const appointments = await Appointment.find(query).sort({ createdAt: -1 });
+    console.log("Found appointments:", appointments.length);
+
+    // Enhance appointments with patient info
+    const enhancedAppointments = await Promise.all(
+      appointments.map(async (appointment) => {
+        try {
+          // Get patient info from Clerk
+          const patient = await users.getUser(appointment.patientId);
+          return {
+            ...appointment.toObject(),
+            patient: {
+              name: patient.firstName || "Unknown Patient",
+              email: patient.emailAddresses[0]?.emailAddress || "",
+              phone: patient.publicMetadata?.phone || "No phone"
+            }
+          };
+        } catch (err) {
+          console.error("Error fetching patient info:", err);
+          return {
+            ...appointment.toObject(),
+            patient: {
+              name: "Unknown Patient",
+              email: "",
+              phone: "No phone"
+            }
+          };
+        }
+      })
+    );
+
+    console.log("Enhanced appointments:", enhancedAppointments);
+    res.json(enhancedAppointments);
   } catch (err) {
+    console.error("Error fetching doctor appointments:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };
@@ -89,11 +169,16 @@ exports.getDoctorAppointments = async (req, res) => {
  */
 exports.updateAppointmentStatus = async (req, res) => {
   try {
-    const doctorId = req.user.id;
+    console.log("=== UPDATE APPOINTMENT STATUS ===");
+    console.log("User from token:", req.user);
+    console.log("Appointment ID:", req.params.id);
+    console.log("New status:", req.body.status);
+
+    const doctorId = req.user.userId;
     const { id } = req.params;
     const { status } = req.body;
 
-    const allowedStatuses = ["waiting", "approved", "completed", "cancelled"];
+    const allowedStatuses = ["waiting", "confirmed", "completed", "cancelled"];
     if (!allowedStatuses.includes(status)) {
       return res.status(400).json({ success: false, message: "Invalid status" });
     }
@@ -112,11 +197,11 @@ exports.updateAppointmentStatus = async (req, res) => {
     appointment.status = status;
     await appointment.save();
 
-    // Emails disabled for now
-    // Do not send emails on status update
+    console.log("Appointment status updated successfully");
 
     res.json({ success: true, message: "Appointment status updated", appointment });
   } catch (err) {
+    console.error("Error updating appointment status:", err);
     res.status(500).json({ success: false, message: err.message });
   }
 };

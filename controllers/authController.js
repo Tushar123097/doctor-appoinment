@@ -43,21 +43,34 @@ exports.login = async (req, res) => {
     // If user found in Clerk, use that
     if (user) {
       console.log("User found in Clerk");
+      console.log("User details:", {
+        id: user.id,
+        email: user.emailAddresses[0]?.emailAddress,
+        firstName: user.firstName,
+        publicMetadata: user.publicMetadata
+      });
+      console.log("User role from metadata:", user.publicMetadata?.role);
+      
+      const userRole = user.publicMetadata?.role || "patient";
+      console.log("Final role being used:", userRole);
+      
       const token = jwt.sign(
         { 
           userId: user.id, 
           email: email,
-          role: user.publicMetadata?.role || "patient"
+          role: userRole
         },
         process.env.JWT_SECRET || "your-secret-key",
         { expiresIn: "7d" }
       );
 
+      console.log("Sending login response with role:", userRole);
+
       return res.json({
         success: true,
         message: "Login successful",
         token: token,
-        role: user.publicMetadata?.role || "patient",
+        role: userRole,
         userId: user.id,
         name: user.firstName || "User"
       });
@@ -166,15 +179,30 @@ exports.signup = async (req, res) => {
 
 exports.getProfile = async (req, res) => {
   try {
+    console.log("=== GET PROFILE ===");
+    console.log("User ID:", req.params.id);
+
     const { id } = req.params;
     const user = await users.getUser(id);
+
+    console.log("User data:", {
+      id: user.id,
+      name: user.firstName,
+      email: user.emailAddresses[0]?.emailAddress,
+      metadata: user.publicMetadata
+    });
 
     res.json({
       success: true,
       id: user.id,
-      email: user.emailAddresses[0].emailAddress,
+      email: user.emailAddresses[0]?.emailAddress,
       name: user.firstName,
-      role: user.publicMetadata.role,
+      role: user.publicMetadata?.role,
+      degree: user.publicMetadata?.degree,
+      specialty: user.publicMetadata?.specialty,
+      experience: user.publicMetadata?.experience,
+      availability: user.publicMetadata?.availability || [],
+      fees: user.publicMetadata?.fees,
     });
   } catch (err) {
     console.error("Get profile error:", err);
@@ -190,18 +218,25 @@ exports.getProfile = async (req, res) => {
 exports.updateProfile = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, role, degree, specialty, experience, availability } = req.body;
+    const { name, role, degree, specialty, experience, availability, fees } = req.body;
+
+    console.log("=== UPDATE PROFILE ===");
+    console.log("User ID:", id);
+    console.log("Update data:", { name, role, degree, specialty, experience, availability, fees });
 
     const user = await users.updateUser(id, {
       firstName: name,
       publicMetadata: {
-        role: role || undefined,
+        role: role || "doctor",
         degree: degree || undefined,
         specialty: specialty || undefined,
         experience: experience || undefined,
         availability: availability || undefined,
+        fees: fees || undefined,
       },
     });
+
+    console.log("Profile updated successfully:", user.publicMetadata);
 
     res.json({
       success: true,
@@ -209,11 +244,13 @@ exports.updateProfile = async (req, res) => {
       user: {
         id: user.id,
         name: user.firstName,
+        email: user.emailAddresses[0]?.emailAddress,
         role: user.publicMetadata.role,
         degree: user.publicMetadata.degree,
         specialty: user.publicMetadata.specialty,
         experience: user.publicMetadata.experience,
         availability: user.publicMetadata.availability,
+        fees: user.publicMetadata.fees,
       },
     });
   } catch (err) {
@@ -226,23 +263,33 @@ exports.updateProfile = async (req, res) => {
 
 exports.getAllDoctors = async (req, res) => {
   try {
+    console.log("=== GET ALL DOCTORS ===");
+    console.log("User from token:", req.user);
+    
     // Fetch list of users from Clerk
     const response = await users.getUserList({ limit: 100 }); // fetch up to 100 users
     const allUsers = response.users || []; // fallback to empty array
+    
+    console.log("Total users from Clerk:", allUsers.length);
 
     // Filter only doctors
     const doctorList = allUsers
       .filter(user => user.publicMetadata?.role === "doctor")
       .map(user => ({
         id: user.id,
-        name: user.firstName,
+        name: user.firstName || "Unknown Doctor",
         email: user.emailAddresses[0]?.emailAddress || "",
         role: user.publicMetadata.role,
         degree: user.publicMetadata.degree || "",
-        specialty: user.publicMetadata.specialty || "",
-        experience: user.publicMetadata.experience || "",
+        specialty: user.publicMetadata.specialty || "General Practice",
+        experience: user.publicMetadata.experience || "5+ years",
+        fees: user.publicMetadata.fees || 500,
         availability: user.publicMetadata.availability || [],
+        image: user.imageUrl || "https://randomuser.me/api/portraits/women/68.jpg"
       }));
+
+    console.log("Filtered doctors:", doctorList.length);
+    console.log("Doctor list:", doctorList);
 
     res.json({
       success: true,
