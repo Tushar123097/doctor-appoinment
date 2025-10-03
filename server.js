@@ -77,6 +77,32 @@ app.get("/api/debug/appointments", async (req, res) => {
   }
 });
 
+// Debug endpoint to test doctors without auth
+app.get("/api/debug/doctors", async (req, res) => {
+  try {
+    const User = require("./models/User");
+    const doctors = await User.find({ role: "doctor" }).select("-password");
+    
+    const doctorList = doctors.map(doctor => ({
+      id: doctor._id.toString(),
+      name: doctor.name || "Unknown Doctor",
+      email: doctor.email || "",
+      role: doctor.role,
+      degree: doctor.degree || "",
+      specialty: doctor.specialty || "General Practice",
+      experience: doctor.experience || "5+ years",
+      fees: doctor.fees || 500,
+      availability: doctor.availability || [],
+      image: "https://randomuser.me/api/portraits/women/68.jpg"
+    }));
+    
+    res.json({ success: true, doctors: doctorList, total: doctors.length });
+  } catch (err) {
+    console.error("Debug doctors error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Routes (without Clerk middleware for now - we'll handle Clerk in the controller)
 app.use("/api/auth", authRoutes);
 app.use("/api/appointments", appointmentRoutes);

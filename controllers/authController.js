@@ -252,18 +252,30 @@ exports.updateProfile = async (req, res) => {
 exports.getAllDoctors = async (req, res) => {
   try {
     console.log("=== GET ALL DOCTORS ===");
-    console.log("User from token:", req.user);
+    console.log("User from token:", req.user || "No auth required");
     
-    // Fetch all doctors from MongoDB with complete profiles
+    // Fetch all doctors from MongoDB (temporarily show all doctors for testing)
     const doctors = await User.find({ 
-      role: "doctor",
-      specialty: { $exists: true, $ne: "" },
-      degree: { $exists: true, $ne: "" },
-      experience: { $exists: true, $ne: "" },
-      fees: { $exists: true, $ne: null }
+      role: "doctor"
     }).select("-password");
     
-    console.log("Total doctors with complete profiles found:", doctors.length);
+    console.log("Total doctors found:", doctors.length);
+    
+    if (doctors.length > 0) {
+      console.log("Sample doctor data:");
+      doctors.slice(0, 2).forEach((doc, index) => {
+        console.log(`Doctor ${index + 1}:`, {
+          _id: doc._id,
+          name: doc.name,
+          email: doc.email,
+          role: doc.role,
+          specialty: doc.specialty,
+          degree: doc.degree,
+          experience: doc.experience,
+          fees: doc.fees
+        });
+      });
+    }
 
     // Format doctor list
     const doctorList = doctors.map(doctor => ({
