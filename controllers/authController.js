@@ -54,13 +54,20 @@ exports.login = async (req, res) => {
 
     console.log("Login successful for role:", user.role);
 
+    // Check if doctor profile is complete
+    let profileComplete = true;
+    if (user.role === "doctor") {
+      profileComplete = !!(user.specialty && user.degree && user.experience && user.fees);
+    }
+
     res.json({
       success: true,
       message: "Login successful",
       token: token,
       role: user.role,
       userId: user._id,
-      name: user.name
+      name: user.name,
+      profileComplete: profileComplete
     });
 
   } catch (err) {
@@ -247,14 +254,20 @@ exports.getAllDoctors = async (req, res) => {
     console.log("=== GET ALL DOCTORS ===");
     console.log("User from token:", req.user);
     
-    // Fetch all doctors from MongoDB
-    const doctors = await User.find({ role: "doctor" }).select("-password");
+    // Fetch all doctors from MongoDB with complete profiles
+    const doctors = await User.find({ 
+      role: "doctor",
+      specialty: { $exists: true, $ne: "" },
+      degree: { $exists: true, $ne: "" },
+      experience: { $exists: true, $ne: "" },
+      fees: { $exists: true, $ne: null }
+    }).select("-password");
     
-    console.log("Total doctors found:", doctors.length);
+    console.log("Total doctors with complete profiles found:", doctors.length);
 
     // Format doctor list
     const doctorList = doctors.map(doctor => ({
-      id: doctor._id,
+      id: doctor._id.toString(), // Convert to string for consistency
       name: doctor.name || "Unknown Doctor",
       email: doctor.email || "",
       role: doctor.role,

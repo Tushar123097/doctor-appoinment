@@ -54,6 +54,29 @@ app.get("/api/debug/config", (req, res) => {
   });
 });
 
+// Debug endpoint to check appointments
+app.get("/api/debug/appointments", async (req, res) => {
+  try {
+    const Appointment = require("./models/Appointment");
+    const appointments = await Appointment.find({}).limit(10);
+    
+    const appointmentList = appointments.map(apt => ({
+      _id: apt._id.toString(),
+      doctorId: apt.doctorId,
+      patientId: apt.patientId,
+      status: apt.status,
+      date: apt.date,
+      doctorIdType: typeof apt.doctorId,
+      patientIdType: typeof apt.patientId
+    }));
+    
+    res.json({ success: true, appointments: appointmentList, total: appointments.length });
+  } catch (err) {
+    console.error("Debug appointments error:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Routes (without Clerk middleware for now - we'll handle Clerk in the controller)
 app.use("/api/auth", authRoutes);
 app.use("/api/appointments", appointmentRoutes);
