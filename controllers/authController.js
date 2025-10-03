@@ -70,10 +70,12 @@ exports.login = async (req, res) => {
       
       // Determine role based on email or default to patient
       const role = email.includes("doctor") ? "doctor" : "patient";
+      console.log("Determined role:", role, "for email:", email);
       
+      const userId = "demo_" + Date.now();
       const token = jwt.sign(
         { 
-          userId: "demo_" + Date.now(), 
+          userId: userId, 
           email: email,
           role: role
         },
@@ -81,12 +83,14 @@ exports.login = async (req, res) => {
         { expiresIn: "7d" }
       );
 
+      console.log("Sending response with role:", role);
+
       return res.json({
         success: true,
         message: "Login successful (demo mode)",
         token: token,
         role: role,
-        userId: "demo_" + Date.now(),
+        userId: userId,
         name: "Demo User"
       });
     }
